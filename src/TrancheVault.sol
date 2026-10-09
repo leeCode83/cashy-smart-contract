@@ -5,6 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title TrancheVault
 /// @notice One ERC-4626 vault per pool tranche (Senior, Junior, Reserve). LPs
@@ -13,6 +14,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /// @dev The same contract is deployed three times; tranches differ only by
 ///  capacity and who holds roles. Funder = the CashyAdvance contract.
 contract TrancheVault is ERC4626, AccessControl {
+    using SafeERC20 for IERC20;
+
     /// @notice May pull idle assets out to fund an advance and settle repayments back.
     bytes32 public constant FUNDER_ROLE = keccak256("FUNDER_ROLE");
 
@@ -20,7 +23,7 @@ contract TrancheVault is ERC4626, AccessControl {
     uint256 public deployed;
 
     /// @notice Hard deposit ceiling for this tranche; max for uncapped.
-    uint256 public immutable capacity;
+    uint256 public immutable CAPACITY;
 
     /// @notice No free liquidity left to fund an advance.
     error InsufficientLiquidity();
@@ -38,7 +41,7 @@ contract TrancheVault is ERC4626, AccessControl {
         string memory symbol_,
         uint256 capacity_
     ) ERC20(name_, symbol_) ERC4626(asset_) {
-        capacity = capacity_;
+        CAPACITY = capacity_;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -46,7 +49,7 @@ contract TrancheVault is ERC4626, AccessControl {
     /// @return Remaining depositable assets.
     function maxDeposit(address) public view override returns (uint256) {
         uint256 assets = totalAssets();
-        return assets >= capacity ? 0 : capacity - assets;
+        return assets >= CAPACITY ? 0 : CAPACITY - assets;
     }
 
     /// @notice Assets = wallet balance + what is out with creators.
@@ -62,7 +65,7 @@ contract TrancheVault is ERC4626, AccessControl {
         if (amount > IERC20(asset()).balanceOf(address(this))) revert InsufficientLiquidity();
         if (deployed + amount > totalAssets()) revert DeployExceedsAssets();
         deployed += amount;
-        IERC20(asset()).transfer(to, amount);
+        IERC20(asset()).safeTransfer(to, amount);
     }
 
     /// @notice Funder records that principal came back after a settlement.

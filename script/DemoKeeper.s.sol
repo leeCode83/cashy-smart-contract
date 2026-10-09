@@ -20,7 +20,7 @@ contract DemoKeeper is Script {
         address creator = vm.envAddress("CREATOR_ADDRESS");
         uint256 id = vm.envOr("ADVANCE_ID", uint256(1));
 
-        (, , , uint256 principal, uint256 fee, uint256 payoutDate) = advance.advances(id);
+        (, , , uint256 principal, uint256 fee, ) = advance.advances(id);
         uint256 repay = principal + fee;
 
         vm.startBroadcast(keeperKey);

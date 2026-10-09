@@ -10,14 +10,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 /// @dev 2 decimals so 1 unit = 1 cent; UI money math stores cents to avoid floats.
 contract MockIDRX is ERC20 {
     /// @notice Faucet admin (deployer).
-    address public immutable minter;
+    address public immutable MINTER;
 
     /// @notice Only the minter may mint.
     error NotMinter();
 
     /// @param initialMint Amount minted to the deployer as a starting faucet.
     constructor(uint256 initialMint) ERC20("IDRX Mock", "IDRX") {
-        minter = msg.sender;
+        MINTER = msg.sender;
         _mint(msg.sender, initialMint);
     }
 
@@ -31,7 +31,7 @@ contract MockIDRX is ERC20 {
     /// @param to Recipient of the new units.
     /// @param amount Cents to mint.
     function mint(address to, uint256 amount) external {
-        if (msg.sender != minter) revert NotMinter();
+        if (msg.sender != MINTER) revert NotMinter();
         _mint(to, amount);
     }
 }
