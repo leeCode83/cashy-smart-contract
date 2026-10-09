@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TrancheVault} from "./TrancheVault.sol";
 import {PayoutNullifierRegistry} from "./PayoutNullifierRegistry.sol";
 import {WaterfallSweep} from "./WaterfallSweep.sol";
@@ -17,6 +18,8 @@ import {WaterfallSweep} from "./WaterfallSweep.sol";
 /// ponytail: defaulted advances stay on Senior's books (no junior loss
 ///  absorption in code); add loss-waterfall accounting when demo needs it.
 contract CashyAdvance is AccessControl {
+    using SafeERC20 for IERC20;
+
     /// @notice Sets the Bureau verdict per creator.
     bytes32 public constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
     /// @notice Runs settlements (keeper / demo script).
@@ -73,13 +76,13 @@ contract CashyAdvance is AccessControl {
     uint256 public nextId = 1;
 
     /// @notice Senior vault that funds advances and heals on repayment.
-    TrancheVault public immutable senior;
+    TrancheVault public immutable SENIOR;
     /// @notice Registry ensuring a payout is funded exactly once.
-    PayoutNullifierRegistry public immutable registry;
+    PayoutNullifierRegistry public immutable REGISTRY;
     /// @notice Token moving between creator, vaults and sweep.
-    IERC20 public immutable token;
+    IERC20 public immutable TOKEN;
     /// @notice Days after payoutDate before an unsettled advance defaults.
-    uint256 public immutable gracePeriod;
+    uint256 public immutable GRACE_PERIOD;
 
     /// @notice Set once after deploy — sweep references this contract, so it
     ///  cannot be passed in the constructor.
@@ -121,10 +124,10 @@ contract CashyAdvance is AccessControl {
     /// @param registry_ Payout nullifier registry.
     /// @param gracePeriod_ Seconds after payoutDate before default.
     constructor(IERC20 token_, TrancheVault senior_, PayoutNullifierRegistry registry_, uint256 gracePeriod_) {
-        token = token_;
-        senior = senior_;
-        registry = registry_;
-        gracePeriod = gracePeriod_;
+        TOKEN = token_;
+        SENIOR = senior_;
+        REGISTRY = registry_;
+        GRACE_PERIOD = gracePeriod_;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -143,7 +146,7 @@ contract CashyAdvance is AccessControl {
         external
         onlyRole(ATTESTER_ROLE)
     {
-        attestations[creator] = Attestation(finalBalance, maxBps, payoutDate);
+        attestations[creator] = Attestation({finalBalance: finalBalance, maxBps: maxBps, payoutDate: payoutDate});
     }
 
     /// @notice Fee and repay totals for an amount — what the UI shows up front.
@@ -168,13 +171,20 @@ contract CashyAdvance is AccessControl {
         if (amount < MIN_ADVANCE) revert BelowMinimum();
         if (amount > (a.finalBalance * a.maxBps) / 10_000) revert NotEligible();
 
-        registry.claim(payoutId, msg.sender);
+        REGISTRY.claim(payoutId, msg.sender);
 
         uint256 fee = (amount * FEE_BPS) / 10_000;
-        senior.deploy(msg.sender, amount);
+        SENIOR.deploy(msg.sender, amount);
 
         id = nextId++;
-        advances[id] = Advance(msg.sender, Status.Active, payoutId, amount, fee, a.payoutDate);
+        advances[id] = Advance({
+            creator: msg.sender,
+            status: Status.Active,
+            payoutId: payoutId,
+            principal: amount,
+            fee: fee,
+            payoutDate: a.payoutDate
+        });
         activeAdvanceId[msg.sender] = id;
         emit AdvanceCreated(id, msg.sender, amount, fee);
     }
@@ -187,7 +197,7 @@ contract CashyAdvance is AccessControl {
         Advance storage adv = advances[id];
         if (adv.status != Status.Active) revert NotSettleable();
         if (block.timestamp < adv.payoutDate) revert NotSettleable();
-        if (block.timestamp > adv.payoutDate + gracePeriod) revert NotSettleable();
+        if (block.timestamp > adv.payoutDate + GRACE_PERIOD) revert NotSettleable();
 
         // Effects first: the advance is done before any token moves.
         adv.status = Status.Repaid;
@@ -195,9 +205,9 @@ contract CashyAdvance is AccessControl {
         onTimeRepays[adv.creator] += 1;
 
         uint256 principal = adv.principal;
-        token.transferFrom(adv.creator, address(sweep), principal + adv.fee);
+        TOKEN.safeTransferFrom(adv.creator, address(sweep), principal + adv.fee);
         sweep.distribute(principal, adv.fee);
-        senior.settleRepaid(principal);
+        SENIOR.settleRepaid(principal);
 
         emit RepaidOnTime(adv.creator, id);
     }
@@ -207,7 +217,7 @@ contract CashyAdvance is AccessControl {
     function markDefaulted(uint256 id) external onlyRole(SETTLER_ROLE) {
         Advance storage adv = advances[id];
         if (adv.status != Status.Active) revert NotSettleable();
-        if (block.timestamp <= adv.payoutDate + gracePeriod) revert NotSettleable();
+        if (block.timestamp <= adv.payoutDate + GRACE_PERIOD) revert NotSettleable();
         adv.status = Status.Defaulted;
         activeAdvanceId[adv.creator] = 0;
         emit Defaulted(id);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {TrancheVault} from "./TrancheVault.sol";
 
 /// @title WaterfallSweep
@@ -13,18 +13,20 @@ import {TrancheVault} from "./TrancheVault.sol";
 /// ponytail: fixed fee ratios, not per-tranche yield targets; upgrade to
 ///  target-based waterfall when demo shows waterfall absorption to juries.
 contract WaterfallSweep {
+    using SafeERC20 for IERC20;
+
     /// @notice May push settled funds into the tranches.
-    address public immutable settler;
+    address public immutable SETTLER;
 
     /// @notice Where principal heals and the senior fee cut lands.
-    TrancheVault public immutable senior;
+    TrancheVault public immutable SENIOR;
     /// @notice Middle fee cut.
-    TrancheVault public immutable junior;
+    TrancheVault public immutable JUNIOR;
     /// @notice Last fee cut; absorbs rounding dust.
-    TrancheVault public immutable reserve;
+    TrancheVault public immutable RESERVE;
 
     /// @notice IDRX being distributed.
-    IERC20 public immutable token;
+    IERC20 public immutable TOKEN;
 
     /// @notice Senior fee cut in bps of the fee (default 7000).
     uint256 public seniorBps;
@@ -52,11 +54,11 @@ contract WaterfallSweep {
         uint256 juniorBps_
     ) {
         if (seniorBps_ + juniorBps_ > 10_000) revert InvalidRatios();
-        settler = settler_;
-        senior = senior_;
-        junior = junior_;
-        reserve = reserve_;
-        token = IERC20(senior_.asset());
+        SETTLER = settler_;
+        SENIOR = senior_;
+        JUNIOR = junior_;
+        RESERVE = reserve_;
+        TOKEN = IERC20(senior_.asset());
         seniorBps = seniorBps_;
         juniorBps = juniorBps_;
     }
@@ -65,7 +67,7 @@ contract WaterfallSweep {
     /// @param seniorBps_ New senior cut in bps.
     /// @param juniorBps_ New junior cut in bps.
     function setRatios(uint256 seniorBps_, uint256 juniorBps_) external {
-        if (msg.sender != settler) revert NotSettler();
+        if (msg.sender != SETTLER) revert NotSettler();
         if (seniorBps_ + juniorBps_ > 10_000) revert InvalidRatios();
         seniorBps = seniorBps_;
         juniorBps = juniorBps_;
@@ -76,14 +78,14 @@ contract WaterfallSweep {
     /// @param principal Advance principal returning to Senior.
     /// @param fee Flat fee to split as LP yield.
     function distribute(uint256 principal, uint256 fee) external {
-        if (msg.sender != settler) revert NotSettler();
-        token.transfer(address(senior), principal);
+        if (msg.sender != SETTLER) revert NotSettler();
+        TOKEN.safeTransfer(address(SENIOR), principal);
         uint256 toSenior = (fee * seniorBps) / 10_000;
         uint256 toJunior = (fee * juniorBps) / 10_000;
         // Reserve takes the remaining cut plus rounding dust — nothing is lost.
         uint256 toReserve = fee - toSenior - toJunior;
-        token.transfer(address(senior), toSenior);
-        token.transfer(address(junior), toJunior);
-        token.transfer(address(reserve), toReserve);
+        TOKEN.safeTransfer(address(SENIOR), toSenior);
+        TOKEN.safeTransfer(address(JUNIOR), toJunior);
+        TOKEN.safeTransfer(address(RESERVE), toReserve);
     }
 }

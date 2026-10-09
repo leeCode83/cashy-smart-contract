@@ -61,6 +61,20 @@ contract CashyInvariants is Test {
         vm.prank(lp);
         senior.deposit(1_000_000_000_00, lp);
         ghostDeposited = 1_000_000_000_00;
+
+        // Only fuzz through this contract's own handler functions. Without this
+        // the fuzzer also calls MockIDRX / the vaults directly (e.g. donating
+        // tokens into a tranche via idrx.transfer) which raises a vault balance
+        // without touching the ghost accounting and breaks the solvency
+        // invariant with a false positive. We restrict both the target contract
+        // and the exact handler selectors it may call.
+        bytes4[] memory selectors = new bytes4[](4);
+        selectors[0] = this.lpDeposit.selector;
+        selectors[1] = this.creatorAdvance.selector;
+        selectors[2] = this.settle.selector;
+        selectors[3] = this.markDefaulted.selector;
+        targetSelector(FuzzSelector({addr: address(this), selectors: selectors}));
+        targetContract(address(this));
     }
 
     /// @dev The core conservation law of the pool.

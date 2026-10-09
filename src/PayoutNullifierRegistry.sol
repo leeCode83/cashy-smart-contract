@@ -8,7 +8,7 @@ pragma solidity ^0.8.30;
 ///  digest), never raw account data — keeps creator balance private.
 contract PayoutNullifierRegistry {
     /// @notice Admin (deployer) — may hand the funder role to another contract.
-    address public immutable admin;
+    address public immutable ADMIN;
 
     /// @notice Only callers holding the funder role may claim payouts.
     address public funder;
@@ -32,7 +32,7 @@ contract PayoutNullifierRegistry {
 
     /// @param _funder Address allowed to claim (the CashyAdvance contract).
     constructor(address _funder) {
-        admin = msg.sender;
+        ADMIN = msg.sender;
         funder = _funder;
     }
 
@@ -40,7 +40,7 @@ contract PayoutNullifierRegistry {
     ///  contract and this registry reference each other at deploy time.
     /// @param funder_ New authorized claiming contract.
     function setFunder(address funder_) external {
-        if (msg.sender != admin) revert NotAdmin();
+        if (msg.sender != ADMIN) revert NotAdmin();
         funder = funder_;
     }
 
