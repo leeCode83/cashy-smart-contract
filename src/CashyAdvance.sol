@@ -9,7 +9,7 @@ import {PayoutNullifierRegistry} from "./PayoutNullifierRegistry.sol";
 import {WaterfallSweep} from "./WaterfallSweep.sol";
 
 /// @title CashyAdvance
-/// @notice Core flow: attest (Bureau AI verdict) → requestAdvance (money out of
+/// @notice Core flow: attest (Bureau rule-based verdict) → requestAdvance (money out of
 ///  Senior today, payout nullifier claimed) → settle (auto-repay on payout day,
 ///  fees through the waterfall, on-time credit recorded).
 /// @dev The Bureau model itself lives offchain; the chain only stores its verdict
