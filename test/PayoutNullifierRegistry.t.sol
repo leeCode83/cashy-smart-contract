@@ -43,4 +43,19 @@ contract PayoutNullifierRegistryTest is Test {
         vm.expectRevert();
         registry.claim(payoutId, funder);
     }
+
+    /// Deploy-time circularity fix: admin can retarget the funder once.
+    function test_AdminSetFunder() public {
+        address next = makeAddr("next-advance");
+        registry.setFunder(next);
+        vm.prank(next);
+        registry.claim(payoutId, next);
+        assertTrue(registry.isClaimed(payoutId));
+    }
+
+    function test_NonAdminSetFunderReverts() public {
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert();
+        registry.setFunder(makeAddr("next"));
+    }
 }
