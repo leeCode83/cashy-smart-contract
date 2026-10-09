@@ -31,4 +31,11 @@ contract MockIDRXTest is Test {
         assertEq(idrx.balanceOf(makeAddr("bob")), 100);
         assertEq(idrx.balanceOf(alice), 0);
     }
+
+    /// Admin-gated mint keeps test accounting and invariants exact.
+    function test_NonMinterCannotMint() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        idrx.mint(alice, 100);
+    }
 }
